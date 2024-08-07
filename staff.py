@@ -5,11 +5,13 @@ from enum import Enum, auto
 from functools import cached_property, wraps
 import json
 import logging
-from typing import Any, Generator
+from typing import Any, Callable, Iterator, TypeVar
 
 from bs4 import BeautifulSoup, Tag
 import requests
 
+
+_T = TypeVar("_T")
 
 LOG = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class StoryGraphAPI:
         return BeautifulSoup(resp.text, "html.parser")
 
     @staticmethod
-    def _paged(fn):
+    def _paged(fn: Callable[[Any, str | None], tuple[list[_T], BeautifulSoup]]) -> Callable[[], Iterator[_T]]:
         @wraps(fn)
         def inner(self, *args, **kwargs):
             path = None
@@ -83,7 +85,37 @@ class StoryGraphAPI:
         self.username = self._identify(page)
 
     @_paged
-    def journal(self, path=None) -> Generator[Any, Any, "Entry"]:
+    def popular_books(self, path: str | None = None):
+        page = self._html(self._get(path or "/browse"))
+        root = page.find(class_="search-results-books-panes")
+        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+
+    @_paged
+    def owned_books(self, path: str | None = None):
+        page = self._html(self._get(path or f"/owned-books/{self.username}"))
+        root = page.find(class_="owned-books-panes")
+        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+
+    @_paged
+    def to_read_books(self, path: str | None = None):
+        page = self._html(self._get(path or f"/to-read/{self.username}"))
+        root = page.find(class_="to-read-books-panes")
+        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+
+    @_paged
+    def current_books(self, path: str | None = None):
+        page = self._html(self._get(path or f"/currently-reading/{self.username}"))
+        root = page.find(class_="read-books-panes")
+        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+
+    @_paged
+    def read_books(self, path: str | None = None):
+        page = self._html(self._get(path or f"/books-read/{self.username}"))
+        root = page.find(class_="read-books-panes")
+        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+
+    @_paged
+    def journal(self, path: str | None = None):
         page = self._html(self._get(path or "/journal"))
         root = page.find(class_="journal-entry-panes")
         return [Entry(self, tag) for tag in root.find_all("div", recursive=False)], page
@@ -97,6 +129,82 @@ class Element:
 
     def _children(self, tag: Tag | None = None):
         return (tag or self._tag).find_all(recursive=False)
+
+
+class Book(Element):
+
+    class Status(Enum):
+        NONE = auto()
+        TO_READ = auto()
+        CURRENT = auto()
+        READ = auto()
+        DID_NOT_FINISH = auto()
+
+    @property
+    def _info(self) -> Tag:
+        return self._tag.find(class_="book-title-author-and-series")
+
+    @property
+    def _title_author_series(self) -> tuple[str, str, str | None, str | None]:
+        root: Tag = self._tag.find(class_="book-title-author-and-series")
+        series = number = None
+        for link in root.find_all("a"):
+            match link["href"].split("/", 2)[1]:
+                case "books":
+                    title = link.text
+                case "authors":
+                    author = link.text
+                case "series":
+                    if not series:
+                        series = link.text
+                    elif link.text[0] == "#":
+                        number = link.text[1:]
+        return (title, author, series, number)
+
+    @property
+    def title(self) -> str:
+        return self._title_author_series[0]
+
+    @property
+    def author(self) -> str:
+        return self._title_author_series[1]
+
+    @property
+    def series(self) -> tuple[str | None, int | None]:
+        return self._title_author_series[2:]
+
+    @property
+    def pages(self) -> int | None:
+        for text in self._tag.find_all(string=True):
+            text: str
+            parts = text.split()
+            if len(parts) == 2 and parts[1] == "pages" and parts[0].isdigit():
+                return int(parts[0])
+        return None
+
+    @property
+    def status(self) -> Status:
+        label = self._tag.find(class_="read-status-label")
+        if not label:
+            return self.Status.NONE
+        match label.text:
+            case "to read":
+                return self.Status.TO_READ
+            case "currently reading":
+                return self.Status.CURRENT
+            case "read":
+                return self.Status.READ
+            case "did not finish":
+                return self.Status.DID_NOT_FINISH
+            case _:
+                raise StoryGraphAPI.Error("Unknown status")
+
+    @property
+    def owned(self) -> bool:
+        return self._tag.find(class_="remove-from-owned-link") is not None
+
+    def __repr__(self):
+        return "<{}: {!r} {!r}>".format(self.__class__.__name__, self.author, self.title)
 
 
 class Entry(Element):
