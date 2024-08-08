@@ -5,9 +5,13 @@ from enum import Enum, auto
 from functools import cached_property
 import json
 import logging
+from typing import Any, Generator, TypeVar
 
 from bs4 import BeautifulSoup, Tag
 import requests
+
+
+_TElement = TypeVar("_TElement", bound="Element")
 
 LOG = logging.getLogger(__name__)
 
@@ -48,7 +52,7 @@ class StoryGraphAPI:
     def _html(self, resp: requests.Response):
         return BeautifulSoup(resp.text, "html.parser")
 
-    def _paged(self, path: str, container: str, model: type["Element"], **kwargs):
+    def _paged(self, path: str, container: str, model: type["_TElement"], **kwargs) -> Generator[_TElement, Any, None]:
         while True:
             page = self._html(self._get(path, **kwargs))
             root = page.find(class_=container)
