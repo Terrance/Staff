@@ -12,6 +12,15 @@ import requests
 LOG = logging.getLogger(__name__)
 
 
+def _form_data(form: Tag):
+    data: dict[str, str] = {}
+    for type_ in ("input", "select", "button"):
+        for input in form.find_all(type_):
+            if (name := input.get("name")) and (value := input.get("value")):
+                data[name] = value
+    return data
+
+
 class StoryGraphAPI:
 
     DOMAIN = "app.thestorygraph.com"
@@ -62,21 +71,15 @@ class StoryGraphAPI:
             raise self.Error("No username")
 
     def login(self, email: str, password: str):
-        resp = self._get("/users/sign_in")
+        target = "/users/sign_in"
+        resp = self._get(target)
         page = self._html(resp)
-        if resp.url.endswith("/users/sign_in"):
-            form = page.find("form", action="/users/sign_in")
-            data = {}
-            for field in form.find_all("input"):
-                match field["type"]:
-                    case "email":
-                        value = email
-                    case "password":
-                        value = password
-                    case _:
-                        value = field.get("value", "")
-                data[field["name"]] = value
-            page = self._html(self._post("/users/sign_in", data))
+        if resp.url.endswith(target):
+            form = page.find("form", action=target)
+            data = _form_data(form)
+            data["user[email]"] = email
+            data["user[password]"] = password
+            page = self._html(self._post(target, data))
         self.username = self._identify(page)
 
     def get_book(self, path: str):
