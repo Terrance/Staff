@@ -2,16 +2,12 @@
 
 from datetime import date, datetime
 from enum import Enum, auto
-from functools import cached_property, wraps
+from functools import cached_property
 import json
 import logging
-from typing import Any, Callable, Iterator, TypeVar
 
 from bs4 import BeautifulSoup, Tag
 import requests
-
-
-_T = TypeVar("_T")
 
 LOG = logging.getLogger(__name__)
 
@@ -43,19 +39,16 @@ class StoryGraphAPI:
     def _html(self, resp: requests.Response):
         return BeautifulSoup(resp.text, "html.parser")
 
-    @staticmethod
-    def _paged(fn: Callable[[Any, str | None], tuple[list[_T], BeautifulSoup]]) -> Callable[[], Iterator[_T]]:
-        @wraps(fn)
-        def inner(self, *args, **kwargs):
-            path = None
-            while True:
-                chunk, page = fn(self, path, *args, **kwargs)
-                yield from chunk
-                more = page.find(id="next_link")
-                if not isinstance(more, Tag):
-                    break
-                path = more["href"]
-        return inner
+    def _paged(self, path: str, container: str, model: type["Element"], **kwargs):
+        while True:
+            page = self._html(self._get(path, **kwargs))
+            root = page.find(class_=container)
+            for tag in root.find_all("div", recursive=False):
+                yield model(self, tag)
+            more = page.find(id="next_link")
+            if not isinstance(more, Tag):
+                break
+            path = more["href"]
 
     def _identify(self, page: BeautifulSoup):
         for link in page.nav.find_all("a"):
@@ -84,41 +77,23 @@ class StoryGraphAPI:
             page = self._html(self._post("/users/sign_in", data))
         self.username = self._identify(page)
 
-    @_paged
-    def popular_books(self, path: str | None = None):
-        page = self._html(self._get(path or "/browse"))
-        root = page.find(class_="search-results-books-panes")
-        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+    def browse_books(self, search: str | None = None):
+        return self._paged("/browse", "search-results-books-panes", Book, params={"search_term": search})
 
-    @_paged
     def owned_books(self, path: str | None = None):
-        page = self._html(self._get(path or f"/owned-books/{self.username}"))
-        root = page.find(class_="owned-books-panes")
-        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+        return self._paged(f"/owned-books/{self.username}", "owned-books-panes", Book)
 
-    @_paged
     def to_read_books(self, path: str | None = None):
-        page = self._html(self._get(path or f"/to-read/{self.username}"))
-        root = page.find(class_="to-read-books-panes")
-        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+        return self._paged(f"/to-read/{self.username}", "to-read-books-panes", Book)
 
-    @_paged
     def current_books(self, path: str | None = None):
-        page = self._html(self._get(path or f"/currently-reading/{self.username}"))
-        root = page.find(class_="read-books-panes")
-        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+        return self._paged(f"/currently-reading/{self.username}", "read-books-panes", Book)
 
-    @_paged
     def read_books(self, path: str | None = None):
-        page = self._html(self._get(path or f"/books-read/{self.username}"))
-        root = page.find(class_="read-books-panes")
-        return [Book(self, tag) for tag in root.find_all("div", recursive=False)], page
+        return self._paged(f"/books-read/{self.username}", "read-books-panes", Book)
 
-    @_paged
     def journal(self, path: str | None = None):
-        page = self._html(self._get(path or "/journal"))
-        root = page.find(class_="journal-entry-panes")
-        return [Entry(self, tag) for tag in root.find_all("div", recursive=False)], page
+        return self._paged("/journal", "journal-entry-panes", Entry)
 
 
 class Element:
