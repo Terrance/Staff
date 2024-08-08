@@ -108,19 +108,33 @@ class StoryGraphAPI:
 
 class Element:
 
+    path: str
+
     def __init__(self, sg: StoryGraphAPI, tag: Tag):
         self._sg = sg
         self._tag = tag
+
+    def reload(self):
+        resp = self._sg._get(self.path)
+        page = self._sg._html(resp)
+        self._tag = page.main
 
 
 class Book(Element):
 
     class Status(Enum):
-        NONE = auto()
-        TO_READ = auto()
-        CURRENT = auto()
-        READ = auto()
-        DID_NOT_FINISH = auto()
+        NONE = ""
+        TO_READ = "to read"
+        CURRENT = "currently reading"
+        READ = "read"
+        DID_NOT_FINISH = "did not finish"
+
+    @property
+    def path(self):
+        for link in self._tag.find_all("a"):
+            if link["href"].startswith("/books/"):
+                return "/".join(link["href"].split("/", 3)[:3])
+        raise StoryGraphAPI.Error("No self link")
 
     @property
     def _info(self) -> Tag:
@@ -169,19 +183,24 @@ class Book(Element):
     @property
     def status(self) -> Status:
         label = self._tag.find(class_="read-status-label")
-        if not label:
-            return self.Status.NONE
-        match label.text:
-            case "to read":
-                return self.Status.TO_READ
-            case "currently reading":
-                return self.Status.CURRENT
-            case "read":
-                return self.Status.READ
-            case "did not finish":
-                return self.Status.DID_NOT_FINISH
-            case _:
-                raise StoryGraphAPI.Error("Unknown status")
+        return self.Status(label.text) if label else self.Status.NONE
+
+    @status.setter
+    def status(self, new: Status):
+        if self.status == new:
+            return
+        for form in self._tag.find_all("form"):
+            if new is self.Status.NONE:
+                if "/remove-book/" in form["action"]:
+                    break
+            else:
+                if "/update-status" in form["action"] and ("=" + new.value.replace(" ", "-")) in form["action"]:
+                    break
+        else:
+            raise StoryGraphAPI.Error("No update status form")
+        data = _form_data(form)
+        self._sg._post(form["action"], data)
+        self.reload()
 
     @property
     def owned(self) -> bool:
