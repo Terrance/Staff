@@ -77,6 +77,11 @@ class StoryGraphAPI:
             page = self._html(self._post("/users/sign_in", data))
         self.username = self._identify(page)
 
+    def get_book(self, path: str):
+        resp = self._get(path)
+        page = self._html(resp)
+        return Book(self, page.main)
+
     def browse_books(self, search: str | None = None):
         return self._paged("/browse", "search-results-books-panes", Book, params={"search_term": search})
 
@@ -122,7 +127,7 @@ class Book(Element):
     @property
     def _title_author_series(self) -> tuple[str, str, str | None, str | None]:
         root: Tag = self._tag.find(class_="book-title-author-and-series")
-        series = number = None
+        title = series = number = None
         for link in root.find_all("a"):
             match link["href"].split("/", 2)[1]:
                 case "books":
@@ -134,6 +139,8 @@ class Book(Element):
                         series = link.text
                     elif link.text[0] == "#":
                         number = link.text[1:]
+        if not title:
+            title = root.h3.find(string=True).strip()
         return (title, author, series, number)
 
     @property
@@ -264,6 +271,9 @@ class Entry(Element):
                 return Entry.Progress.UPDATED, int(text[:-1])
         else:
             raise StoryGraphAPI.Error("No entry progress")
+
+    def get_book(self):
+        return self._sg.get_book(self._title.a["href"])
 
 
 class StoryGraph(StoryGraphAPI):
