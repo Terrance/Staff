@@ -107,9 +107,6 @@ class Element:
         self._sg = sg
         self._tag = tag
 
-    def _children(self, tag: Tag | None = None):
-        return (tag or self._tag).find_all(recursive=False)
-
 
 class Book(Element):
 
@@ -208,36 +205,28 @@ class Entry(Element):
     )
 
     @property
-    def _cover(self) -> Tag:
-        return self._children()[0]
-
-    @property
-    def _info(self) -> Tag:
-        return self._children()[1]
-
-    @property
-    def _date(self) -> Tag:
-        return self._children(self._info)[0]
+    def _date_title_progress(self) -> tuple[Tag, Tag, Tag]:
+        return tuple(self._tag.find_all(recursive=False)[:3])
 
     @property
     def _title(self) -> Tag:
-        return self._children(self._info)[1]
-
-    @property
-    def _progress(self) -> Tag:
-        return self._children(self._info)[2]
+        return self._date_title_progress[1].a
 
     @cached_property
-    def _edit_page(self) -> BeautifulSoup:
-        for link in self._date.find_all("a"):
+    def _edit_link(self) -> str:
+        for link in self._date_title_progress[0].find_all("a"):
             if link["href"].startswith("/journal_entries/"):
-                return self._sg._html(self._sg._get(link["href"]))
+                return link["href"]
         else:
             raise StoryGraphAPI.Error("No entry edit page")
 
+    @cached_property
+    def _edit_page(self) -> BeautifulSoup:
+        return self._sg._html(self._sg._get(self._edit_link))
+
     @property
-    def date(self) -> tuple[date | None, DateAccuracy | None]:
-        for text in self._date.find_all(string=True):
+    def when(self) -> tuple[date | None, DateAccuracy | None]:
+        for text in self._date_title_progress[0].find_all(string=True):
             if "No date" in text:
                 return (None, None)
             for fmt, accuracy in self._DATES:
@@ -250,19 +239,19 @@ class Entry(Element):
 
     @property
     def title(self) -> str:
-        return self._title.a.text
+        return self._title.text
 
     @property
     def author(self) -> str:
         prefix = f"{self.title} by "
-        combined = self._cover.img["alt"]
+        combined = self._tag.img["alt"]
         if not combined.startswith(prefix):
             raise StoryGraphAPI.Error("Can't derive author")
         return combined[len(prefix):]
 
     @property
     def progress(self) -> tuple[Progress, int]:
-        for text in self._progress.find_all(string=True):
+        for text in self._date_title_progress[2].find_all(string=True):
             if "Started" in text:
                 return Entry.Progress.STARTED, 0
             elif "Finished" in text:
@@ -272,8 +261,16 @@ class Entry(Element):
         else:
             raise StoryGraphAPI.Error("No entry progress")
 
+    @property
+    def pages(self):
+        return int(self._edit_page.find("input", {"name": "journal_entry[pages_read]"})["value"])
+
+    @property
+    def pages_total(self):
+        return int(self._edit_page.find("input", {"name": "journal_entry[pages_read_total]"})["value"])
+
     def get_book(self):
-        return self._sg.get_book(self._title.a["href"])
+        return self._sg.get_book(self._title["href"])
 
 
 class StoryGraph(StoryGraphAPI):
