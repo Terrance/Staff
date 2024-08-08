@@ -43,6 +43,8 @@ class StoryGraphAPI:
         while True:
             page = self._html(self._get(path, **kwargs))
             root = page.find(class_=container)
+            if not root:
+                break
             for tag in root.find_all("div", recursive=False):
                 yield model(self, tag)
             more = page.find(id="next_link")
