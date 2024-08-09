@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from datetime import date, datetime
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from functools import cached_property
 import json
 import logging
@@ -76,9 +76,17 @@ class StoryGraphAPI:
         if not data:
             data = {}
         for type_ in ("input", "select", "button"):
-            for input in form.find_all(type_):
-                if (name := input.get("name")) and (value := input.get("value")):
-                    data.setdefault(name, value)
+            for field in form.find_all(type_, {"name": True}):
+                name: str = field["name"]
+                value: str
+                if type_ == "select":
+                    option = field.find("option", selected=True)
+                    if not option:
+                        continue
+                    value = option.get("value", "")
+                else:
+                    value = field.get("value", "")
+                data.setdefault(name, value)
         return self.post(form["action"], data, csrf)
 
     def paged(self, path: str, container: str, model: type["_TElement"], **kwargs) -> Generator[_TElement, Any, None]:
@@ -246,10 +254,10 @@ class Entry(Element):
         UPDATED = auto()
         FINISHED = auto()
 
-    class DateAccuracy(Enum):
-        DAY = auto()
-        MONTH = auto()
+    class DateAccuracy(IntEnum):
         YEAR = auto()
+        MONTH = auto()
+        DAY = auto()
 
     _DATES = (
         ("%d %B %Y", DateAccuracy.DAY),
@@ -291,6 +299,12 @@ class Entry(Element):
         else:
             raise StoryGraphAPI.Error("No entry date")
 
+    @when.setter
+    def when(self, when: date | tuple[date, DateAccuracy]):
+        if isinstance(when, date):
+            when = (when, self.DateAccuracy.DAY)
+        self.edit(when=when[0], accuracy=when[1])
+
     @property
     def title(self) -> str:
         return self._title.text
@@ -315,16 +329,59 @@ class Entry(Element):
         else:
             raise StoryGraphAPI.Error("No entry progress")
 
+    def _edit_input(self, name: str) -> int:
+        return int(self._edit_page.find("input", {"name": name})["value"])
+
     @property
     def pages(self):
-        return int(self._edit_page.find("input", {"name": "journal_entry[pages_read]"})["value"])
+        return self._edit_input("journal_entry[pages_read]")
+
+    @pages.setter
+    def pages(self, pages: int):
+        self.edit(pages=pages)
 
     @property
     def pages_total(self):
-        return int(self._edit_page.find("input", {"name": "journal_entry[pages_read_total]"})["value"])
+        return self._edit_input("journal_entry[pages_read_total]")
+
+    @pages_total.setter
+    def pages_total(self, pages_total: int):
+        self.edit(pages_total=pages_total)
+
+    @property
+    def percent(self):
+        return self._edit_input("journal_entry[percent_reached]")
+
+    @percent.setter
+    def percent(self, percent: int):
+        self.edit(percent=percent)
 
     def get_book(self):
         return self._sg.get_book(self._title["href"])
+
+    def edit(
+        self,
+        when: date | None = None,
+        accuracy: DateAccuracy = DateAccuracy.DAY,
+        percent: int | None = None,
+        pages: int | None = None,
+        pages_total: int | None = None
+    ):
+        form: Tag = self._edit_page.find("form", {"class": "edit_journal_entry"})
+        data: dict[str, str] = {}
+        if when:
+            for part in self.DateAccuracy:
+                field = part.name.lower()
+                value = getattr(when, field) if accuracy >= part else ""
+                data[f"journal_entry[{field}]"] = value
+        if pages is not None:
+            data["journal_entry[pages_read]"] = str(pages)
+        if pages_total is not None:
+            data["journal_entry[pages_read_total]"] = str(pages_total)
+        if percent is not None:
+            data["journal_entry[percent_reached]"] = str(percent)
+        self._sg.form(form, data)
+        self.reload()
 
     def delete(self):
         for link in self._edit_page.find_all("a"):
@@ -333,6 +390,9 @@ class Entry(Element):
                 return
         else:
             raise StoryGraphAPI.Error("No delete link")
+
+    def reload(self):
+        del self._edit_page
 
     def __repr__(self):
         progress, percent = self.progress
