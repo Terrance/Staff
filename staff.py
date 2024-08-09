@@ -16,20 +16,11 @@ _TElement = TypeVar("_TElement", bound="Element")
 LOG = logging.getLogger(__name__)
 
 
-def _form_data(form: Tag):
-    data: dict[str, str] = {}
-    for type_ in ("input", "select", "button"):
-        for input in form.find_all(type_):
-            if (name := input.get("name")) and (value := input.get("value")):
-                data[name] = value
-    return data
-
-
 class StoryGraphAPI:
 
     DOMAIN = "app.thestorygraph.com"
 
-    _COOKIE = "_storygraph_session"
+    COOKIE = "_storygraph_session"
 
     class Error(Exception):
         pass
@@ -38,23 +29,32 @@ class StoryGraphAPI:
         self._session = requests.Session()
         self.username = None
 
-    def _request(self, method: str, path: str, **kwargs):
+    def request(self, method: str, path: str, **kwargs):
         return self._session.request(method, f"https://{self.DOMAIN}{path}", **kwargs)
 
-    def _get(self, path: str, **kwargs):
-        return self._request("GET", path, **kwargs)
+    def get(self, path: str, **kwargs):
+        return self.request("GET", path, **kwargs)
 
-    def _post(self, path: str, form: dict | None = None, **kwargs):
+    def post(self, path: str, form: dict | None = None, **kwargs):
         if form:
             kwargs["data"] = form
-        return self._request("POST", path, **kwargs)
+        return self.request("POST", path, **kwargs)
 
-    def _html(self, resp: requests.Response):
+    def html(self, resp: requests.Response):
         return BeautifulSoup(resp.text, "html.parser")
 
-    def _paged(self, path: str, container: str, model: type["_TElement"], **kwargs) -> Generator[_TElement, Any, None]:
+    def form(self, form: Tag, data: dict[str, str] | None = None, csrf: bool = False):
+        if not data:
+            data = {}
+        for type_ in ("input", "select", "button"):
+            for input in form.find_all(type_):
+                if (name := input.get("name")) and (value := input.get("value")):
+                    data.setdefault(name, value)
+        return self.post(form["action"], data, csrf)
+
+    def paged(self, path: str, container: str, model: type["_TElement"], **kwargs) -> Generator[_TElement, Any, None]:
         while True:
-            page = self._html(self._get(path, **kwargs))
+            page = self.html(self.get(path, **kwargs))
             root = page.find(class_=container)
             if not root:
                 break
@@ -65,49 +65,29 @@ class StoryGraphAPI:
                 break
             path = more["href"]
 
-    def _identify(self, page: BeautifulSoup):
+    def login(self, email: str, password: str):
+        target = "/users/sign_in"
+        resp = self.get(target)
+        page = self.html(resp)
+        if resp.url.endswith(target):
+            form: Tag = page.find("form", action=target)
+            data = {
+                "user[email]": email,
+                "user[password]": password,
+            }
+            page = self.html(self.form(form, data))
         for link in page.nav.find_all("a"):
             if link["href"].startswith("/profile/"):
-                username = link["href"].rsplit("/", 1)[1]
-                LOG.info("Logged in as %s", username)
-                return username
+                self.username = link["href"].rsplit("/", 1)[1]
+                LOG.info("Logged in as %s", self.username)
+                break
         else:
             raise self.Error("No username")
 
-    def login(self, email: str, password: str):
-        target = "/users/sign_in"
-        resp = self._get(target)
-        page = self._html(resp)
-        if resp.url.endswith(target):
-            form = page.find("form", action=target)
-            data = _form_data(form)
-            data["user[email]"] = email
-            data["user[password]"] = password
-            page = self._html(self._post(target, data))
-        self.username = self._identify(page)
-
     def get_book(self, path: str):
-        resp = self._get(path)
-        page = self._html(resp)
+        resp = self.get(path)
+        page = self.html(resp)
         return Book(self, page.main)
-
-    def browse_books(self, search: str | None = None):
-        return self._paged("/browse", "search-results-books-panes", Book, params={"search_term": search})
-
-    def owned_books(self, path: str | None = None):
-        return self._paged(f"/owned-books/{self.username}", "owned-books-panes", Book)
-
-    def to_read_books(self, path: str | None = None):
-        return self._paged(f"/to-read/{self.username}", "to-read-books-panes", Book)
-
-    def current_books(self, path: str | None = None):
-        return self._paged(f"/currently-reading/{self.username}", "read-books-panes", Book)
-
-    def read_books(self, path: str | None = None):
-        return self._paged(f"/books-read/{self.username}", "read-books-panes", Book)
-
-    def journal(self, path: str | None = None):
-        return self._paged("/journal", "journal-entry-panes", Entry)
 
 
 class Element:
@@ -116,11 +96,11 @@ class Element:
 
     def __init__(self, sg: StoryGraphAPI, tag: Tag):
         self._sg = sg
-        self._tag = tag
+        self._tag: Tag = tag
 
     def reload(self):
-        resp = self._sg._get(self.path)
-        page = self._sg._html(resp)
+        resp = self._sg.get(self.path)
+        page = self._sg.html(resp)
         self._tag = page.main
 
 
@@ -138,7 +118,8 @@ class Book(Element):
         for link in self._tag.find_all("a"):
             if link["href"].startswith("/books/"):
                 return "/".join(link["href"].split("/", 3)[:3])
-        raise StoryGraphAPI.Error("No self link")
+        else:
+            raise StoryGraphAPI.Error("No self link")
 
     @property
     def _info(self) -> Tag:
@@ -202,8 +183,7 @@ class Book(Element):
                     break
         else:
             raise StoryGraphAPI.Error("No update status form")
-        data = _form_data(form)
-        self._sg._post(form["action"], data)
+        self._sg.form(form)
         self.reload()
 
     @property
@@ -211,7 +191,7 @@ class Book(Element):
         return self._tag.find(class_="remove-from-owned-link") is not None
 
     def __repr__(self):
-        return "<{}: {!r} {!r}>".format(self.__class__.__name__, self.author, self.title)
+        return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}>"
 
 
 class Entry(Element):
@@ -249,8 +229,8 @@ class Entry(Element):
             raise StoryGraphAPI.Error("No entry edit page")
 
     @cached_property
-    def _edit_page(self) -> BeautifulSoup:
-        return self._sg._html(self._sg._get(self._edit_link))
+    def _edit_page(self) -> Tag:
+        return self._sg.html(self._sg.get(self._edit_link)).main
 
     @property
     def when(self) -> tuple[date | None, DateAccuracy | None]:
@@ -301,27 +281,52 @@ class Entry(Element):
         return self._sg.get_book(self._title["href"])
 
 
-class StoryGraph(StoryGraphAPI):
+    def __repr__(self):
+        progress, percent = self.progress
+        return f"<{self.__class__.__name__}: {self.title!r} {progress.name} {percent}%>"
+
+
+class StoryGraph:
 
     def __init__(self, path: str):
-        super().__init__()
         self._path = path
+        self._sg = StoryGraphAPI()
 
     def __enter__(self):
         with open(self._path) as fp:
             self._creds = json.load(fp)
         if self._creds.get("cookie"):
-            self._session.cookies[self._COOKIE] = self._creds["cookie"]
+            self._sg._session.cookies[self._sg.COOKIE] = self._creds["cookie"]
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._creds["cookie"] = self._session.cookies.get(sg._COOKIE, domain=self.DOMAIN)
+        self._creds["cookie"] = self._sg._session.cookies.get(self._sg.COOKIE, domain=self._sg.DOMAIN)
         with open(self._path, "w") as fp:
             json.dump(self._creds, fp, indent=2)
 
     def login(self):
-        super().login(self._creds["email"], self._creds["password"])
+        self._sg.login(self._creds["email"], self._creds["password"])
 
+    def get_book(self, path: str):
+        return self._sg.get_book(path)
+
+    def browse_books(self, search: str | None = None):
+        return self._sg.paged("/browse", "search-results-books-panes", Book, params={"search_term": search})
+
+    def owned_books(self):
+        return self._sg.paged(f"/owned-books/{self._sg.username}", "owned-books-panes", Book)
+
+    def to_read_books(self):
+        return self._sg.paged(f"/to-read/{self._sg.username}", "to-read-books-panes", Book)
+
+    def current_books(self):
+        return self._sg.paged(f"/currently-reading/{self._sg.username}", "read-books-panes", Book)
+
+    def read_books(self):
+        return self._sg.paged(f"/books-read/{self._sg.username}", "read-books-panes", Book)
+
+    def journal(self):
+        return self._sg.paged("/journal", "journal-entry-panes", Entry)
 
 
 if __name__ == "__main__":
