@@ -27,6 +27,8 @@ class StoryGraphAPI:
 
     def __init__(self):
         self._session = requests.Session()
+        self._csrf_param: str | None = None
+        self._csrf_token: str | None = None
         self.username = None
 
     def request(self, method: str, path: str, **kwargs):
@@ -41,7 +43,28 @@ class StoryGraphAPI:
         return self.request("POST", path, **kwargs)
 
     def html(self, resp: requests.Response):
-        return BeautifulSoup(resp.text, "html.parser")
+        page = BeautifulSoup(resp.text, "html.parser")
+        if param := page.find("meta", {"name": "csrf-param"}):
+            self._csrf_param = param["content"]
+        if token := page.find("meta", {"name": "csrf-token"}):
+            self._csrf_token = token["content"]
+        return page
+
+    def csrf(self):
+        if not self._csrf_token:
+            self.get("/")
+        if not self._csrf_token:
+            raise self.Error("No CSRF token")
+        csrf = self._csrf_token
+        self._csrf_token = None
+        return csrf
+
+    def method(self, link: Tag):
+        data = {
+            "_method": link["data-method"],
+            self._csrf_param: self.csrf(),
+        }
+        return self.post(link["href"], data)
 
     def form(self, form: Tag, data: dict[str, str] | None = None, csrf: bool = False):
         if not data:
@@ -281,6 +304,13 @@ class Entry(Element):
     def get_book(self):
         return self._sg.get_book(self._title["href"])
 
+    def delete(self):
+        for link in self._edit_page.find_all("a"):
+            if link.get("data-method") == "delete" and link["href"].startswith("/journal_entries/"):
+                self._sg.method(link)
+                return
+        else:
+            raise StoryGraphAPI.Error("No delete link")
 
     def __repr__(self):
         progress, percent = self.progress
