@@ -214,7 +214,8 @@ class Entry(Element):
 
     @property
     def _date_title_progress(self) -> tuple[Tag, Tag, Tag]:
-        return tuple(self._tag.find_all(recursive=False)[:3])
+        right = self._tag.find_all(recursive=False)[1]
+        return tuple(right.find_all(recursive=False)[:3])
 
     @property
     def _title(self) -> Tag:
