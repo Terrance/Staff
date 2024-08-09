@@ -16,6 +16,10 @@ _TElement = TypeVar("_TElement", bound="Element")
 LOG = logging.getLogger(__name__)
 
 
+def _setter(fn):
+    return property(fset=fn)
+
+
 class StoryGraphAPI:
 
     DOMAIN = "app.thestorygraph.com"
@@ -37,9 +41,11 @@ class StoryGraphAPI:
     def get(self, path: str, **kwargs):
         return self.request("GET", path, **kwargs)
 
-    def post(self, path: str, form: dict | None = None, **kwargs):
+    def post(self, path: str, form: dict | None = None, csrf = False, **kwargs):
         if form:
             kwargs["data"] = form
+        if csrf:
+            kwargs.setdefault("headers", {})["X-CSRF-Token"] = self.csrf()
         return self.request("POST", path, **kwargs)
 
     def html(self, resp: requests.Response):
@@ -212,6 +218,22 @@ class Book(Element):
     @property
     def owned(self) -> bool:
         return self._tag.find(class_="remove-from-owned-link") is not None
+
+    def _update_progress(self, unit: str, value: int):
+        form: Tag = self._tag.find("form", action="/update-progress")
+        data = {
+            "read_status[progress_number]": str(value),
+            "read_status[progress_type]": unit,
+        }
+        self._sg.form(form, data, True)
+
+    @_setter
+    def pages_read(self, pages: int):
+        self._update_progress("pages", pages)
+
+    @_setter
+    def percent_read(self, percent: int):
+        self._update_progress("percentage", percent)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}>"
