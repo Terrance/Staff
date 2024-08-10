@@ -1,0 +1,8 @@
+[project]
+name = "Staff"
+version = "0.0.0"
+dependencies = ["beautifulsoup4", "requests"]
+description = "Unofficial Python library to work with data on The StoryGraph."
+keywords = ["storygraph"]
+readme = "README.md"
+license = {file = "LICENSE.txt"}
