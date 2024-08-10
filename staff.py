@@ -227,6 +227,15 @@ class Book(Element):
     def owned(self) -> bool:
         return self._tag.find(class_="remove-from-owned-link") is not None
 
+    @owned.setter
+    def owned(self, owned: bool):
+        class_ = "mark-as-owned-link" if owned else "remove-from-owned-link"
+        link: Tag | None = self._tag.find(class_=class_)
+        if not link:
+            return
+        self._sg.method(link)
+        self.reload()
+
     def _update_progress(self, unit: str, value: int):
         form: Tag = self._tag.find("form", action="/update-progress")
         data = {
