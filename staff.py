@@ -165,7 +165,7 @@ class Book(Element):
     @property
     def _title_author_series(self) -> tuple[str, str, str | None, str | None]:
         root: Tag = self._tag.find(class_="book-title-author-and-series")
-        title = series = number = None
+        title = author = series = number = None
         for link in root.find_all("a"):
             match link["href"].split("/", 2)[1]:
                 case "books":
@@ -186,7 +186,7 @@ class Book(Element):
         return self._title_author_series[0]
 
     @property
-    def author(self) -> str:
+    def author(self) -> str | None:
         return self._title_author_series[1]
 
     @property
