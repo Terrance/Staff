@@ -89,7 +89,7 @@ class StoryGraphAPI:
                 data.setdefault(name, value)
         return self.post(form["action"], data, csrf)
 
-    def paged(self, path: str, container: str, model: type["_TElement"], **kwargs) -> Generator[_TElement, Any, None]:
+    def paged(self, path: str, container: str, model: type[_TElement], **kwargs) -> Generator[_TElement, Any, None]:
         while True:
             page = self.html(self.get(path, **kwargs))
             root = page.find(class_=container)
@@ -181,6 +181,23 @@ class Book(Element):
             title = root.h3.find(string=True).strip()
         return (title, author, series, number)
 
+    @cached_property
+    def _editions_page(self):
+        return self._sg.html(self._sg.get(f"{self.path}/editions")).main
+
+    @cached_property
+    def metadata(self):
+        block: Tag | None = self._tag.find(class_="edition-info")
+        if not block:
+            block = self._editions_page.find(class_="edition-info")
+        data: dict[str, str | None] = {}
+        for line in block.find_all("p"):
+            field, value = (node.text.strip() for node in line.children)
+            if value in ("None", "Not specified"):
+                value = None
+            data[field.rstrip(":")] = value
+        return data
+
     @property
     def title(self) -> str:
         return self._title_author_series[0]
@@ -252,6 +269,9 @@ class Book(Element):
     def percent_read(self, percent: int):
         self._update_progress("percentage", percent)
 
+    def other_editions(self):
+        return self._sg.paged(f"{self.path}/editions", "search-results-books-panes", Book)
+
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}>"
 
@@ -283,7 +303,7 @@ class Entry(Element):
     def _title(self) -> Tag:
         return self._date_title_progress[1].a
 
-    @cached_property
+    @property
     def _edit_link(self) -> str:
         for link in self._date_title_progress[0].find_all("a"):
             if link["href"].startswith("/journal_entries/"):
