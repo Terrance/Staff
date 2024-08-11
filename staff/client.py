@@ -15,15 +15,13 @@ class StoryGraph:
             self._creds = json.load(fp)
         if self._creds.get("cookie"):
             self._sg._session.cookies[self._sg.COOKIE] = self._creds["cookie"]
+        self._sg.login(self._creds["email"], self._creds["password"])
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._creds["cookie"] = self._sg._session.cookies.get(self._sg.COOKIE, domain=self._sg.DOMAIN)
         with open(self._path, "w") as fp:
             json.dump(self._creds, fp, indent=2)
-
-    def login(self):
-        self._sg.login(self._creds["email"], self._creds["password"])
 
     def get_book(self, path: str):
         resp = self._sg.get(path)

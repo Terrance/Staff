@@ -21,7 +21,6 @@ Create a client using your credentials file:
 from staff import StoryGraph
 
 with StoryGraph(".storygraph.json") as sg:
-    sg.login()
     latest = next(sg.current_books())
     print(f"I'm reading {latest.title} by {latest.author}")
 ```
