@@ -26,9 +26,41 @@ class Progress(Enum):
 
 
 class DateAccuracy(IntEnum):
+
     YEAR = auto()
     MONTH = auto()
     DAY = auto()
+
+    @classmethod
+    def parse(cls, text: str):
+        if text == "No date":
+            return (None, None)
+        for pattern, accuracy in (
+            ("%d %B %Y", cls.DAY),
+            ("%B %Y", cls.MONTH),
+            ("%Y", cls.YEAR),
+        ):
+            try:
+                when = datetime.strptime(text, pattern)
+            except ValueError:
+                continue
+            else:
+                return (when.date(), accuracy)
+        else:
+            raise StoryGraphError(f"Can't parse date: {text!r}")
+
+    @classmethod
+    def unparse(cls, when: date | None, accuracy: "DateAccuracy"):
+        if when is None:
+            return "No date"
+        match accuracy:
+            case cls.DAY:
+                pattern = "%d %B %Y"
+            case cls.MONTH:
+                pattern = "%B %Y"
+            case cls.YEAR:
+                pattern = "%Y"
+        return when.strftime(pattern)
 
 
 class Book(Element):
@@ -161,12 +193,6 @@ class Book(Element):
 
 class Entry(Element):
 
-    _DATES = (
-        ("%d %B %Y", DateAccuracy.DAY),
-        ("%B %Y", DateAccuracy.MONTH),
-        ("%Y", DateAccuracy.YEAR),
-    )
-
     @property
     def _date_title_progress(self) -> tuple[Tag, Tag, Tag]:
         right = self._tag.find_all(recursive=False)[1]
@@ -189,15 +215,12 @@ class Entry(Element):
         return self._sg.html(self._sg.get(self._edit_link)).main
 
     @property
-    def when(self) -> tuple[date | None, DateAccuracy | None]:
+    def when(self) -> tuple[None, None] | tuple[date, DateAccuracy]:
         for text in self._date_title_progress[0].find_all(string=True):
-            if "No date" in text:
-                return (None, None)
-            for fmt, accuracy in self._DATES:
-                try:
-                    return datetime.strptime(text.strip(), fmt).date(), accuracy
-                except ValueError:
-                    pass
+            try:
+                return DateAccuracy.parse(text)
+            except StoryGraphError:
+                pass
         else:
             raise StoryGraphError("No entry date")
 
