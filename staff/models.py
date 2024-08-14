@@ -243,16 +243,24 @@ class Entry(Element):
         return combined[len(prefix):]
 
     @property
-    def progress(self) -> tuple[Progress, int]:
+    def _progress_percent(self) -> tuple[Progress, int]:
         for text in self._date_title_progress[2].find_all(string=True):
             if "Started" in text:
-                return Entry.Progress.STARTED, 0
+                return Progress.STARTED, 0
             elif "Finished" in text:
-                return Entry.Progress.FINISHED, 100
+                return Progress.FINISHED, 100
             elif text.endswith("%"):
-                return Entry.Progress.UPDATED, int(text[:-1])
+                return Progress.UPDATED, int(text[:-1])
         else:
             raise StoryGraphError("No entry progress")
+
+    @property
+    def progress(self):
+        return self._progress_percent[0]
+
+    @property
+    def progress_percent(self):
+        return self._progress_percent[1]
 
     def _edit_input(self, name: str) -> int:
         return int(self._edit_page.find("input", {"name": name})["value"])
@@ -322,5 +330,4 @@ class Entry(Element):
         del self._edit_page
 
     def __repr__(self):
-        progress, percent = self.progress
-        return f"<{self.__class__.__name__}: {self.title!r} {progress.name} {percent}%>"
+        return f"<{self.__class__.__name__}: {self.title!r} {self.progress.name} {self.progress_percent}%>"
