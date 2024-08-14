@@ -74,6 +74,10 @@ class Book(Element):
             raise StoryGraphError("No self link")
 
     @property
+    def _id(self):
+        return self.path.rsplit("/", 1)[-1]
+
+    @property
     def _info(self) -> Tag:
         return self._tag.find(class_="book-title-author-and-series")
 
@@ -184,11 +188,49 @@ class Book(Element):
     def percent_read(self, percent: int):
         self._update_progress("percentage", percent)
 
+    @cached_property
+    def _reads_page(self):
+        return self._sg.html(self._sg.get(f"/read_instances/new?book_id={self._id}")).main
+
+    def reads(self) -> list["Read"]:
+        panel: Tag = self._reads_page.find(id="reading-summary")
+        reads: list[Read] = []
+        for row in panel.find_all("p", recursive=False):
+            if row.find(class_="edit-read-instance"):
+                reads.append(Read(self._sg, row))
+        return reads
+
     def other_editions(self):
         return self._sg.paged(f"{self.path}/editions", "search-results-books-panes", Book)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}>"
+
+
+class Read(Element):
+
+    @property
+    def _start_end(self):
+        for text in self._tag.find_all(string=True):
+            if " to " in text:
+                return text.strip().split(" to ")
+        else:
+            raise StoryGraphError("No read dates")
+
+    @property
+    def start(self):
+        return DateAccuracy.parse(self._start_end[0])
+
+    @property
+    def end(self):
+        return DateAccuracy.parse(self._start_end[1])
+
+    def delete(self):
+        link: Tag = self._tag.find("a", {"data-method": "delete"})
+        self._sg.method(link)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {DateAccuracy.unparse(*self.start)} -> {DateAccuracy.unparse(*self.end)}>"
 
 
 class Entry(Element):
