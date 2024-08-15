@@ -23,6 +23,7 @@ class Progress(Enum):
     STARTED = auto()
     UPDATED = auto()
     FINISHED = auto()
+    DID_NOT_FINISH = auto()
 
 
 class DateAccuracy(IntEnum):
@@ -321,13 +322,16 @@ class Entry(Element):
 
     @property
     def _progress_percent(self) -> tuple[Progress, int]:
+        progress = Progress.UPDATED
         for text in self._date_title_progress[2].find_all(string=True):
             if "Started" in text:
                 return Progress.STARTED, 0
             elif "Finished" in text:
                 return Progress.FINISHED, 100
+            elif "Did not finish" in text:
+                progress = Progress.DID_NOT_FINISH
             elif text.endswith("%"):
-                return Progress.UPDATED, int(text[:-1])
+                return progress, int(text[:-1])
         else:
             raise StoryGraphError("No entry progress")
 
