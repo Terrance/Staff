@@ -46,7 +46,7 @@ class StoryGraphAPI:
 
     def csrf(self):
         if not self._csrf_token:
-            self.get("/")
+            self.html(self.get("/"))
         if not self._csrf_token:
             raise StoryGraphError("No CSRF token")
         csrf = self._csrf_token
