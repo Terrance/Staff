@@ -111,13 +111,6 @@ class StoryGraphAPI:
 
 class Element:
 
-    path: str
-
     def __init__(self, sg: StoryGraphAPI, tag: Tag):
         self._sg = sg
         self._tag: Tag = tag
-
-    def reload(self):
-        resp = self._sg.get(self.path)
-        page = self._sg.html(resp)
-        self._tag = page.main

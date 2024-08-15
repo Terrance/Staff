@@ -67,7 +67,7 @@ class DateAccuracy(IntEnum):
 class Book(Element):
 
     @property
-    def path(self):
+    def _path(self):
         for link in self._tag.find_all("a"):
             if link["href"].startswith("/books/"):
                 return "/".join(link["href"].split("/", 3)[:3])
@@ -76,7 +76,7 @@ class Book(Element):
 
     @property
     def _id(self):
-        return self.path.rsplit("/", 1)[-1]
+        return self._path.rsplit("/", 1)[-1]
 
     @property
     def _info(self) -> Tag:
@@ -103,7 +103,7 @@ class Book(Element):
 
     @cached_property
     def _editions_page(self):
-        return self._sg.html(self._sg.get(f"{self.path}/editions")).main
+        return self._sg.html(self._sg.get(f"{self._path}/editions")).main
 
     @cached_property
     def metadata(self):
@@ -158,7 +158,7 @@ class Book(Element):
         else:
             raise StoryGraphError("No update status form")
         self._sg.form(form)
-        self.reload()
+        self._reload()
 
     @property
     def owned(self) -> bool:
@@ -171,7 +171,7 @@ class Book(Element):
         if not link:
             return
         self._sg.method(link)
-        self.reload()
+        self._reload()
 
     def _update_progress(self, unit: str, value: int):
         form: Tag = self._tag.find("form", action="/update-progress")
@@ -202,7 +202,12 @@ class Book(Element):
         return reads
 
     def other_editions(self):
-        return self._sg.paged(f"{self.path}/editions", "search-results-books-panes", Book)
+        return self._sg.paged(f"{self._path}/editions", "search-results-books-panes", Book)
+
+    def _reload(self):
+        resp = self._sg.get(self._path)
+        page = self._sg.html(resp)
+        self._tag = page.main
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}>"
@@ -397,7 +402,7 @@ class Entry(Element):
         if percent is not None:
             data["journal_entry[percent_reached]"] = str(percent)
         self._sg.form(form, data)
-        self.reload()
+        self._reload()
 
     def delete(self):
         for link in self._edit_page.find_all("a"):
@@ -407,7 +412,7 @@ class Entry(Element):
         else:
             raise StoryGraphError("No delete link")
 
-    def reload(self):
+    def _reload(self):
         del self._edit_page
 
     def __repr__(self):
