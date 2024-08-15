@@ -83,15 +83,16 @@ class Book(Element):
         return self._tag.find(class_="book-title-author-and-series")
 
     @property
-    def _title_author_series(self) -> tuple[str, str, str | None, str | None]:
+    def _title_author_series(self) -> tuple[str, list[str], str | None, str | None]:
         root: Tag = self._tag.find(class_="book-title-author-and-series")
-        title = author = series = number = None
+        title = series = number = None
+        authors: list[str] = []
         for link in root.find_all("a"):
             match link["href"].split("/", 2)[1]:
                 case "books":
                     title = link.text
                 case "authors":
-                    author = link.text
+                    authors.append(link.text)
                 case "series":
                     if not series:
                         series = link.text
@@ -99,7 +100,7 @@ class Book(Element):
                         number = link.text[1:]
         if not title:
             title = root.h3.find(string=True).strip()
-        return (title, author, series, number)
+        return (title, authors, series, number)
 
     @cached_property
     def _editions_page(self):
@@ -123,8 +124,12 @@ class Book(Element):
         return self._title_author_series[0]
 
     @property
-    def author(self) -> str | None:
+    def authors(self) -> list[str]:
         return self._title_author_series[1]
+
+    @property
+    def author(self) -> str | None:
+        return next(iter(self.authors), None)
 
     @property
     def series(self) -> tuple[str | None, int | None]:
