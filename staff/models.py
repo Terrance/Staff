@@ -72,6 +72,15 @@ class DateAccuracy(IntEnum):
     """Date is a day, month and year (e.g. 7 March 2024)."""
 
     @classmethod
+    def wrap(cls, when: date | None | tuple[date | None, "DateAccuracy"]) -> tuple[date | None, "DateAccuracy"]:
+        """
+        Convert a bare date to a date-accuracy tuple with `DAY` accuracy.
+        """
+        if not when or isinstance(when, date):
+            when = (when, DateAccuracy.DAY)
+        return when
+
+    @classmethod
     def parse(cls, text: str) -> tuple[None, None] | tuple[date, "DateAccuracy"]:
         """
         Convert a textual date of any accuracy to a Python `date` and the
@@ -339,10 +348,9 @@ class Read(Element):
         return DateAccuracy.parse(self._start_end[0])
 
     @start.setter
-    def start(self, start: date | tuple[date, DateAccuracy]):
-        if isinstance(start, date):
-            start = (start, DateAccuracy.DAY)
-        self.edit(start=start[0], start_accuracy=start[1])
+    def start(self, start: date | None | tuple[date | None, DateAccuracy]):
+        when, accuracy = DateAccuracy.wrap(start)
+        self.edit(start=when, start_accuracy=accuracy)
 
     @property
     def end(self) -> tuple[None, None] | tuple[date, DateAccuracy]:
@@ -356,10 +364,9 @@ class Read(Element):
         return DateAccuracy.parse(self._start_end[1])
 
     @end.setter
-    def end(self, end: date | tuple[date, DateAccuracy]):
-        if isinstance(end, date):
-            end = (end, DateAccuracy.DAY)
-        self.edit(end=end[0], end_accuracy=end[1])
+    def end(self, end: date | None | tuple[date | None, DateAccuracy]):
+        when, accuracy = DateAccuracy.wrap(end)
+        self.edit(end=when, end_accuracy=accuracy)
 
     def edit(
         self,
@@ -442,10 +449,8 @@ class Entry(Element):
             raise StoryGraphError("No entry date")
 
     @when.setter
-    def when(self, when: date | tuple[date, DateAccuracy]):
-        if isinstance(when, date):
-            when = (when, DateAccuracy.DAY)
-        self.edit(when=when[0], accuracy=when[1])
+    def when(self, when: date | None | tuple[date | None, DateAccuracy]):
+        self.edit(*DateAccuracy.wrap(when))
 
     @property
     def title(self) -> str:
