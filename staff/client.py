@@ -28,6 +28,15 @@ class StoryGraph:
         page = self._sg.html(resp)
         return Book(self._sg, page.main)
 
+    def import_book(self, isbn: str):
+        path = "/import-book-isbn"
+        resp = self._sg.get(path)
+        page = self._sg.html(resp)
+        form = page.main.find("form", action=path)
+        resp = self._sg.form(form, {"isbn": isbn})
+        page = self._sg.html(resp)
+        return Book(self._sg, page.main)
+
     def browse_books(self, search: str | None = None):
         return self._sg.paged("/browse", "search-results-books-panes", Book, params={"search_term": search})
 
