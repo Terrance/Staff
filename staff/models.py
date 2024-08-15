@@ -221,9 +221,44 @@ class Read(Element):
     def start(self):
         return DateAccuracy.parse(self._start_end[0])
 
+    @start.setter
+    def start(self, start: date | tuple[date, DateAccuracy]):
+        if isinstance(start, date):
+            start = (start, DateAccuracy.DAY)
+        self.edit(start=start[0], start_accuracy=start[1])
+
     @property
     def end(self):
         return DateAccuracy.parse(self._start_end[1])
+
+    @end.setter
+    def end(self, end: date | tuple[date, DateAccuracy]):
+        if isinstance(end, date):
+            end = (end, DateAccuracy.DAY)
+        self.edit(end=end[0], end_accuracy=end[1])
+
+    def edit(
+        self,
+        start: date | None = None,
+        start_accuracy: DateAccuracy = DateAccuracy.DAY,
+        end: date | None = None,
+        end_accuracy: DateAccuracy = DateAccuracy.DAY,
+    ):
+        link: Tag = self._tag.find("a", {"data-method": "get"})
+        panel = self._sg.html(self._sg.method(link))
+        form: Tag = panel.find("form")
+        data = {}
+        if start:
+            for part in DateAccuracy:
+                field = part.name.lower()
+                value = getattr(start, field) if start_accuracy >= part else ""
+                data[f"read_instance[start_{field}]"] = value
+        if end:
+            for part in DateAccuracy:
+                field = part.name.lower()
+                value = getattr(end, field) if end_accuracy >= part else ""
+                data[f"read_instance[{field}]"] = value
+        self._sg.form(form, data, True)
 
     def delete(self):
         link: Tag = self._tag.find("a", {"data-method": "delete"})
