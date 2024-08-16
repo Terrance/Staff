@@ -1,4 +1,4 @@
-from typing import Any, Generator, TypeVar
+from typing import Dict, Type, TypeVar
 
 from bs4 import BeautifulSoup, Tag
 from requests import Response, Session
@@ -96,7 +96,7 @@ class StoryGraphAPI:
         }
         return self.post(link["href"], data)
 
-    def form(self, form: Tag, data: dict[str, str] | None = None, csrf: bool = False) -> Response:
+    def form(self, form: Tag, data: Dict[str, str] | None = None, csrf: bool = False) -> Response:
         """
         Submit a HTML form, combining existing input fields with any custom
         form data, optionally with a CSRF token.
@@ -117,7 +117,7 @@ class StoryGraphAPI:
                 data.setdefault(name, value)
         return self.post(form["action"], data, csrf)
 
-    def paged(self, path: str, container: str, model: type[_TElement], **kwargs):
+    def paged(self, path: str, container: str, model: Type[_TElement], **kwargs):
         """
         Repeatedly follow the next page link when present on a page, and yield
         items as `Element`s as they're found within a container tag.

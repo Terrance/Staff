@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import Enum, IntEnum, auto
 from functools import cached_property
+from typing import Dict, List, Tuple
 
 from bs4 import Tag
 
@@ -72,7 +73,7 @@ class DateAccuracy(IntEnum):
     """Date is a day, month and year (e.g. 7 March 2024)."""
 
     @classmethod
-    def wrap(cls, when: date | None | tuple[date | None, "DateAccuracy"]) -> tuple[date | None, "DateAccuracy"]:
+    def wrap(cls, when: date | None | Tuple[date | None, "DateAccuracy"]) -> Tuple[date | None, "DateAccuracy"]:
         """
         Convert a bare date to a date-accuracy tuple with `DAY` accuracy.
         """
@@ -81,7 +82,7 @@ class DateAccuracy(IntEnum):
         return when
 
     @classmethod
-    def parse(cls, text: str) -> tuple[None, None] | tuple[date, "DateAccuracy"]:
+    def parse(cls, text: str) -> Tuple[None, None] | Tuple[date, "DateAccuracy"]:
         """
         Convert a textual date of any accuracy to a Python `date` and the
         corresponding `DateAccuracy`.
@@ -109,13 +110,12 @@ class DateAccuracy(IntEnum):
         """
         if when is None:
             return "No date"
-        match accuracy:
-            case cls.DAY:
-                pattern = "%d %B %Y"
-            case cls.MONTH:
-                pattern = "%B %Y"
-            case cls.YEAR:
-                pattern = "%Y"
+        if accuracy == cls.DAY:
+            pattern = "%d %B %Y"
+        elif accuracy == cls.MONTH:
+            pattern = "%B %Y"
+        elif accuracy == cls.YEAR:
+            pattern = "%Y"
         return when.strftime(pattern)
 
 
@@ -141,21 +141,21 @@ class Book(Element):
         return self._tag.find(class_="book-title-author-and-series")
 
     @property
-    def _title_author_series(self) -> tuple[str, list[str], str | None, str | None]:
+    def _title_author_series(self) -> Tuple[str, List[str], str | None, str | None]:
         root: Tag = self._tag.find(class_="book-title-author-and-series")
         title = series = number = None
-        authors: list[str] = []
+        authors: List[str] = []
         for link in root.find_all("a"):
-            match link["href"].split("/", 2)[1]:
-                case "books":
-                    title = link.text
-                case "authors":
-                    authors.append(link.text)
-                case "series":
-                    if not series:
-                        series = link.text
-                    elif link.text[0] == "#":
-                        number = link.text[1:]
+            type_ = link["href"].split("/", 2)[1]
+            if type_ == "books":
+                title = link.text
+            elif type_ == "authors":
+                authors.append(link.text)
+            elif type_ == "series":
+                if not series:
+                    series = link.text
+                elif link.text[0] == "#":
+                    number = link.text[1:]
         if not title:
             title = root.h3.find(string=True).strip()
         return (title, authors, series, number)
@@ -165,14 +165,14 @@ class Book(Element):
         return self._sg.html(self._sg.get(f"{self._path}/editions")).main
 
     @cached_property
-    def metadata(self) -> dict[str, str | None]:
+    def metadata(self) -> Dict[str, str | None]:
         """
         Edition-specific information, such as format, ISBN and language.
         """
         block: Tag | None = self._tag.find(class_="edition-info")
         if not block:
             block = self._editions_page.find(class_="edition-info")
-        data: dict[str, str | None] = {}
+        data: Dict[str, str | None] = {}
         for line in block.find_all("p"):
             field, value = (node.text.strip() for node in line.children)
             if value in ("None", "Not specified"):
@@ -188,7 +188,7 @@ class Book(Element):
         return self._title_author_series[0]
 
     @property
-    def authors(self) -> list[str]:
+    def authors(self) -> List[str]:
         """
         All listed authors or contributors to the book.
         """
@@ -202,7 +202,7 @@ class Book(Element):
         return next(iter(self.authors), None)
 
     @property
-    def series(self) -> tuple[str | None, str | None]:
+    def series(self) -> Tuple[str | None, str | None]:
         """
         Tuple of series name and position in that series.
         """
@@ -295,12 +295,12 @@ class Book(Element):
     def _reads_page(self) -> Tag:
         return self._sg.html(self._sg.get(f"/read_instances/new?book_id={self._id}")).main
 
-    def reads(self) -> list["Read"]:
+    def reads(self) -> List["Read"]:
         """
         Current and any previous read-throughs of the book.
         """
         panel: Tag = self._reads_page.find(id="reading-summary")
-        reads: list[Read] = []
+        reads: List[Read] = []
         for row in panel.find_all("p", recursive=False):
             if row.find(class_="edit-read-instance"):
                 reads.append(Read(self._sg, row))
@@ -329,7 +329,7 @@ class Read(Element):
     """
 
     @property
-    def _start_end(self) -> tuple[str, str]:
+    def _start_end(self) -> Tuple[str, str]:
         for text in self._tag.find_all(string=True):
             if " to " in text:
                 return tuple(text.strip().split(" to ", 1))
@@ -337,7 +337,7 @@ class Read(Element):
             raise StoryGraphError("No read dates")
 
     @property
-    def start(self) -> tuple[None, None] | tuple[date, DateAccuracy]:
+    def start(self) -> Tuple[None, None] | Tuple[date, DateAccuracy]:
         """
         Date the read was started.
 
@@ -348,12 +348,12 @@ class Read(Element):
         return DateAccuracy.parse(self._start_end[0])
 
     @start.setter
-    def start(self, start: date | None | tuple[date | None, DateAccuracy]):
+    def start(self, start: date | None | Tuple[date | None, DateAccuracy]):
         when, accuracy = DateAccuracy.wrap(start)
         self.edit(start=when, start_accuracy=accuracy)
 
     @property
-    def end(self) -> tuple[None, None] | tuple[date, DateAccuracy]:
+    def end(self) -> Tuple[None, None] | Tuple[date, DateAccuracy]:
         """
         Date the read was either finished or abandoned.
 
@@ -364,7 +364,7 @@ class Read(Element):
         return DateAccuracy.parse(self._start_end[1])
 
     @end.setter
-    def end(self, end: date | None | tuple[date | None, DateAccuracy]):
+    def end(self, end: date | None | Tuple[date | None, DateAccuracy]):
         when, accuracy = DateAccuracy.wrap(end)
         self.edit(end=when, end_accuracy=accuracy)
 
@@ -411,7 +411,7 @@ class Entry(Element):
     """
 
     @property
-    def _date_title_progress(self) -> tuple[Tag, Tag, Tag]:
+    def _date_title_progress(self) -> Tuple[Tag, Tag, Tag]:
         right = self._tag.find_all(recursive=False)[1]
         return tuple(right.find_all(recursive=False)[:3])
 
@@ -432,7 +432,7 @@ class Entry(Element):
         return self._sg.html(self._sg.get(self._edit_link)).main
 
     @property
-    def when(self) -> tuple[None, None] | tuple[date, DateAccuracy]:
+    def when(self) -> Tuple[None, None] | Tuple[date, DateAccuracy]:
         """
         Date when this entry applies.
 
@@ -449,7 +449,7 @@ class Entry(Element):
             raise StoryGraphError("No entry date")
 
     @when.setter
-    def when(self, when: date | None | tuple[date | None, DateAccuracy]):
+    def when(self, when: date | None | Tuple[date | None, DateAccuracy]):
         self.edit(*DateAccuracy.wrap(when))
 
     @property
@@ -471,7 +471,7 @@ class Entry(Element):
         return combined[len(prefix):]
 
     @property
-    def _progress_percent(self) -> tuple[Progress, int]:
+    def _progress_percent(self) -> Tuple[Progress, int]:
         progress = Progress.UPDATED
         for text in self._date_title_progress[2].find_all(string=True):
             if "Started" in text:
@@ -561,7 +561,7 @@ class Entry(Element):
         Change the date or progress in this entry.
         """
         form: Tag = self._edit_page.find("form", {"class": "edit_journal_entry"})
-        data: dict[str, str] = {}
+        data: Dict[str, str] = {}
         if when:
             for part in DateAccuracy:
                 field = part.name.lower()
