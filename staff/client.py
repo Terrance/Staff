@@ -51,7 +51,10 @@ class StoryGraph:
         form = page.main.find("form", action=path)
         resp = self._sg.form(form, {"isbn": isbn})
         page = self._sg.html(resp)
-        return Book(self._sg, page.main)
+        if page.find(class_="book-title-author-and-series"):
+            return Book(self._sg, page.main)
+        else:
+            return None
 
     def browse_books(self, search: str | None = None):
         """
