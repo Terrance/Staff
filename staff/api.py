@@ -161,7 +161,10 @@ class StoryGraphAPI:
                 "user[email]": email,
                 "user[password]": password,
             }
-            page = self.html(self.form(form, data))
+            resp = self.form(form, data)
+            if resp.status_code == 422:
+                raise StoryGraphError("Wrong email/password")
+            page = self.html(resp)
         for link in page.nav.find_all("a"):
             if link["href"].startswith("/profile/"):
                 self.username = link["href"].rsplit("/", 1)[1]
