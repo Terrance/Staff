@@ -499,6 +499,28 @@ class Entry(Element):
         """
         return self._progress_percent[1]
 
+    @property
+    def note(self) -> Tag | None:
+        """
+        HTML note associated with this entry.
+
+        This is a writable field which calls `edit()` with the new note, as
+        either plain text or HTML parsed into a `Tag`.
+        """
+        outer = self._tag.find(class_="trix-content")
+        return outer.find(class_="trix-content") if outer else None
+
+    @property
+    def note_text(self) -> str | None:
+        """
+        Plain text of the note associated with this entry.
+        """
+        return self.note.text.strip() if self.note else None
+
+    @note.setter
+    def note(self, value: Tag | str):
+        self.edit(note=value)
+
     def _edit_input(self, name: str) -> int:
         return int(self._edit_page.find("input", {"name": name})["value"])
 
@@ -555,10 +577,11 @@ class Entry(Element):
         accuracy: DateAccuracy = DateAccuracy.DAY,
         percent: int | None = None,
         pages: int | None = None,
-        pages_total: int | None = None
+        pages_total: int | None = None,
+        note: Tag | str | None = None,
     ):
         """
-        Change the date or progress in this entry.
+        Change the date, progress and/or note in this entry.
         """
         form: Tag = self._edit_page.find("form", {"class": "edit_journal_entry"})
         data: Dict[str, str] = {}
@@ -573,6 +596,12 @@ class Entry(Element):
             data["journal_entry[pages_read_total]"] = str(pages_total)
         if percent is not None:
             data["journal_entry[percent_reached]"] = str(percent)
+        if note is not None:
+            if isinstance(note, str):
+                note = note.replace("\n", "<br/>")
+            else:
+                note = "".join(map(str, note.children)).strip()
+            data["journal_entry[note]"] = note
         self._sg.form(form, data)
         self._reload()
 
