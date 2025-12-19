@@ -1,5 +1,7 @@
 import json
 
+from requests import Session
+
 from .api import StoryGraphAPI
 from .models import Book, Entry
 
@@ -10,14 +12,14 @@ class StoryGraph:
     handle session management.
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, session: Session | None = None):
         """
         Initialise with `path` pointing at a writable JSON file, containing
         `email` and `password` fields.  This file will be updated on exit with
         the session cookie, used by subsequent sessions.
         """
         self._path = path
-        self._sg = StoryGraphAPI()
+        self._sg = StoryGraphAPI(session)
 
     def __enter__(self):
         with open(self._path) as fp:

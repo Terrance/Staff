@@ -1,10 +1,6 @@
 from typing import Dict, Type, TypeVar
 
 from bs4 import BeautifulSoup, Tag
-try:
-    from cloudscraper import create_scraper
-except ImportError:
-    create_scraper = None
 from requests import Response, Session
 
 
@@ -33,13 +29,8 @@ class StoryGraphAPI:
 
     _session: Session
 
-    def __init__(self, cf: bool | None = None):
-        if cf is not False and create_scraper:
-            self._session = create_scraper()
-        elif not cf:
-            self._session = Session()
-        else:
-            raise StoryGraphError("Missing module 'cloudscraper' to pass Cloudflare challenge")
+    def __init__(self, session: Session | None = None):
+        self._session = session or Session()
         self._csrf_param: str | None = None
         self._csrf_token: str | None = None
         self.username = None

@@ -16,5 +16,3 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
-[project.optional-dependencies]
-cloudflare = ["cloudscraper"]
