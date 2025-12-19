@@ -148,6 +148,8 @@ class StoryGraphAPI:
         page = self.html(resp)
         if resp.url.endswith(target):
             form: Tag = page.find("form", action=target)
+            if not form:
+                raise StoryGraphError("Couldn't find login form")
             data = {
                 "user[email]": email,
                 "user[password]": password,
