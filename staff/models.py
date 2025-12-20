@@ -141,9 +141,9 @@ class Book(Element):
         return self._tag.find(class_="book-title-author-and-series")
 
     @property
-    def _title_author_series(self) -> Tuple[str, List[str], str | None, str | None]:
+    def _title_author_series(self) -> Tuple[str, List[str], str | None, str | None, str | None]:
         root: Tag = self._tag.find(class_="book-title-author-and-series")
-        title = series = number = None
+        title = series_path = series_name = series_number = None
         authors: List[str] = []
         for link in root.find_all("a"):
             type_ = link["href"].split("/", 2)[1]
@@ -152,13 +152,14 @@ class Book(Element):
             elif type_ == "authors":
                 authors.append(link.text)
             elif type_ == "series":
-                if not series:
-                    series = link.text
+                if not series_path:
+                    series_path = link["href"]
+                    series_name = link.text
                 elif link.text[0] == "#":
-                    number = link.text[1:]
+                    series_number = link.text[1:]
         if not title:
             title = root.h3.find(string=True).strip()
-        return (title, authors, series, number)
+        return (title, authors, series_path, series_name, series_number)
 
     @cached_property
     def _editions_page(self):
@@ -202,11 +203,37 @@ class Book(Element):
         return next(iter(self.authors), None)
 
     @property
-    def series(self) -> Tuple[str | None, str | None]:
+    def series(self) -> "Series | None":
         """
-        Tuple of series name and position in that series.
+        Main series containing the book.
         """
-        return self._title_author_series[2:]
+        path = self._title_author_series[2]
+        if not path:
+            return None
+        resp = self._sg.get(path)
+        page = self._sg.html(resp)
+        return Series(self._sg, page.main)
+
+    @property
+    def series_id(self) -> str | None:
+        """
+        Identifier of the series containing the book.
+        """
+        return self._title_author_series[3]
+
+    @property
+    def series_name(self) -> str | None:
+        """
+        Name of the series containing the book.
+        """
+        return self._title_author_series[3]
+
+    @property
+    def series_position(self) -> str | None:
+        """
+        Position of the book in the series.
+        """
+        return self._title_author_series[4]
 
     @property
     def pages(self) -> int | None:
@@ -320,7 +347,59 @@ class Book(Element):
         self._tag = page.main
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}>"
+        series = ""
+        if self.series_name:
+            if self.series_position:
+                series = f" #{self.series_position}"
+            series = f" ({self.series_name!r}{series})"
+        return f"<{self.__class__.__name__}: {self.author!r} {self.title!r}{series}>"
+
+
+class Series(Element):
+    """
+    Representation of a sequence of `Book`s forming a series.
+    """
+
+    @property
+    def _id(self):
+        for link in self._tag.find_all("a"):
+            if link["href"].startswith(("/series/", "/series-collections/")):
+                return link["href"].split("/", 2)[2]
+        else:
+            raise StoryGraphError("No series self-reference")
+
+    @property
+    def name(self):
+        return self._tag.find("h4").text
+
+    def books(self):
+        """
+        Retrieve all books that form part of this series.
+
+        This produces a generator that pages the entire series.
+        """
+        return self._sg.paged(f"/series/{self._id}", "series-books-panes", Book)
+
+    def major_books(self):
+        """
+        Retrieve all books with a major (integer) position.
+        """
+        return (book for book in self.books() if book.series_position and book.series_position.isdigit())
+
+    def minor_books(self):
+        """
+        Retrieve all books with a minor (e.g. decimal) position.
+        """
+        return (book for book in self.books() if book.series_position and not book.series_position.isdigit())
+
+    def other_books(self):
+        """
+        Retrieve all books which do not form part of the main sequence.
+        """
+        return (book for book in self.books() if not book.series_position)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.name!r}>"
 
 
 class Read(Element):

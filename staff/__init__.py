@@ -1,2 +1,2 @@
 from .client import StoryGraph
-from .models import Book, DateAccuracy, Entry, Progress, Status
+from .models import Book, DateAccuracy, Entry, Progress, Series, Status

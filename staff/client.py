@@ -3,7 +3,7 @@ import json
 from requests import Session
 
 from .api import StoryGraphAPI
-from .models import Book, Entry
+from .models import Book, Entry, Series
 
 
 class StoryGraph:
@@ -57,6 +57,14 @@ class StoryGraph:
             return Book(self._sg, page.main)
         else:
             return None
+
+    def get_series(self, path: str):
+        """
+        Retrieve a series from a URL (e.g. `/series/111600`).
+        """
+        resp = self._sg.get(path)
+        page = self._sg.html(resp)
+        return Series(self._sg, page.main)
 
     def browse_books(self, search: str | None = None):
         """
